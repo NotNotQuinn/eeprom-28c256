@@ -1,13 +1,14 @@
 // EEPROM (28C256) datasheet: https://eater.net/datasheets/28c256.pdf
 // This is an EEPROM read/writer. :)
 
-#define USE_CAMINO
+// #define USE_CAMINO
 
 #ifdef USE_CAMINO
 #include <Camino.h>
 #endif
-#include "vec.h"
-#include "vec.c"
+
+#include "vec/vec.h"
+#include "vec/vec.c"
 
 // My custom magic numbers
 #define EEPROM01 22
@@ -100,11 +101,12 @@ void hexdump() {
 	// it is not available while using camino
 	return;
 #else
-	for (unsigned int i = 0U; i < 0x8000U; i += 16U) {
+	for (unsigned int i = 0U; i < 0x0100U; i += 16U) {
 		char *msg = hexdump16(i);
 		Serial.println(msg);
 		free(msg);
 	}
+	Serial.println("=-------------------------------------------------------------------------=");
 #endif
 }
 
@@ -162,6 +164,15 @@ void setup() {
 	camino.begin(115200);
 #else
 	Serial.begin(115200);
+	byte msg[4] = {0xff, 0xff, 0xff, 0x04};
+	byte data[64];
+	for (int i = 0; i < 64; i++) {
+		data[i] = msg[i%4];
+	}
+	writeEEPROMPage(0x00, data);
+	writeEEPROMPage(0x40, data);
+	writeEEPROMPage(0x80, data);
+	writeEEPROMPage(0xc0, data);
 	hexdump();
 #endif
 }
@@ -183,10 +194,12 @@ void loop() {
 	sei(); // re-enable interrupts ("sei()" == "set" the "interrupts" flag)
 
 	if (job.is_page_write) {
-		// ???? page writes dont exist yet
+		writeEEPROMPage(job.address, job.data);
 	} else {
 		writeEEPROM(job.address, job.data[0]);
 	}
+
+	free(job.data);
 }
 
 // Sets the address pins to the address provided
@@ -198,13 +211,13 @@ void writeAddress(unsigned int addr) {
 }
 
 void pinModeIO(byte mode) {
-	if (IO_PINS_MODE != mode) {
-		for (int i = 0; i < IO_PINS_LEN; i++) {
-			pinMode(IO_PINS[i], mode);
-		}
+	if (IO_PINS_MODE == mode) return;
 
-		IO_PINS_MODE = mode;
+	for (int i = 0; i < IO_PINS_LEN; i++) {
+		pinMode(IO_PINS[i], mode);
 	}
+
+	IO_PINS_MODE = mode;
 }
 
 byte readEEPROM(unsigned int address) {
@@ -212,33 +225,36 @@ byte readEEPROM(unsigned int address) {
 	digitalWrite(OUTPUT_ENABLE, LOW);
 	digitalWrite(WRITE_ENABLE, HIGH);
 
-	// Set the address
-	writeAddress(address);
-
-	// Wait >=150 ns before reading
-	NOP; NOP; NOP; // 3 * 62.5 ns @ 16,000,000hz
-
 	// Data pins: input for reading
 	pinModeIO(INPUT);
 
+	// Set the address
+	writeAddress(address);
+
+	// Wait >=350 ns before reading (~375 ns)
+	NOP; NOP; NOP; // 3 * 62.5 ns @ 16,000,000hz
+	NOP; NOP; NOP; // 3 * 62.5 ns @ 16,000,000hz
+
+	// Serial.print("Reading: ");
 	byte data;
 	// Read the IO pins
 	for (int i = IO_PINS_LEN-1; i >= 0; i--) {
 		byte bit = digitalRead(IO_PINS[i]);
 		data = (data << 1) | bit;
+		// Serial.print(bit);
 	}
+	// Serial.println();
 
 	return data;
 }
 
-void writeEEPROM(int address, byte data) {
+void writeEEPROM(unsigned int address, byte data) {
 	// Configure initial control pins
 	digitalWrite(OUTPUT_ENABLE, HIGH);
-
+	digitalWrite(WRITE_ENABLE, HIGH);
+	cli(); // No interrupts can happen, because reads will mess this up.
 	// Set the address
 	writeAddress(address);
-
-
 
 	// Data pins: output for writing
 	pinModeIO(OUTPUT);
@@ -248,9 +264,45 @@ void writeEEPROM(int address, byte data) {
 		data >>= 1;
 	}
 
+	sei();
+
 	digitalWrite(WRITE_ENABLE, LOW);
 	delay(1);
 	digitalWrite(WRITE_ENABLE, HIGH);
+	delay(10);
+}
+
+void writeEEPROMPage(unsigned int address, byte* data) {
+	if (address % 0x40 != 0) {
+		return; // idk if this is a good idea
+	}
+
+	cli();
+	// Configure initial control pins
+	digitalWrite(OUTPUT_ENABLE, HIGH);
+	digitalWrite(WRITE_ENABLE, HIGH);
+
+
+	// Data pins: output for writing
+	pinModeIO(OUTPUT);
+
+	for (int i = 0; i < 64; i++) {
+		byte currentData = data[i];
+		writeAddress(address+i);
+		digitalWrite(WRITE_ENABLE, LOW);
+		// Write data
+		for (int i = 0; i < IO_PINS_LEN; i++) {
+			digitalWrite(IO_PINS[i], currentData & 1);
+			currentData >>= 1;
+		}
+		// wait >= 50ns
+		NOP; NOP; NOP;
+		digitalWrite(WRITE_ENABLE, HIGH);
+		// High pulse must be >= 50ns
+	}
+	sei();
+
+	// Wait up to 10 ms for the write cycle to complete
 	delay(10);
 }
 
@@ -263,7 +315,11 @@ void writeEEPROM_callable(byte dataLength, byte dataArray[]) {
 	// Copy a single tiny byte to its own array, how sweet.
 	// This is needed because the same memory is used for all callables
 	byte* data = malloc(1);
-	if (data == NULL) return; // OOM
+	if (data == NULL) {
+		// OOM
+		returns("[arduino error] OOM");
+		return;
+	}
 	data[0] = dataArray[2];
 
 	// Note: the lifetime of temp is not guaranteed to be long
@@ -339,31 +395,35 @@ void readEEPROMPage_callable(byte dataLength, byte dataArray[]) {
 	returns(64, outgoing);
 }
 
-// // NOTE: UNTESTED
-// void writeEEPROMPage_callable(byte dataLength, byte dataArray[]) {
-// 	unsigned int address = dataArray[0] | dataArray[1] << 8;
-// 	if (address % 64 != 0) {
-// 		// TODO: Find a better way to express there was an error
-// 		return;
-// 	}
+// NOTE: UNTESTED
+void writeEEPROMPage_callable(byte dataLength, byte dataArray[]) {
+	unsigned int address = dataArray[0] | dataArray[1] << 8;
+	if (address % 64 != 0) {
+		// TODO: Find a better way to express there was an error
+		return;
+	}
 
-// 	// This is needed because the same memory is used for all callables
-// 	byte* data = malloc(64);
-// 	if (data == NULL) return; // OOM
-// 	byte* incoming = &dataArray[2];
-// 	for (int i = 0; i < 64; i++) {
-// 		data[i] = incoming[i];
-// 	}
+	// This is needed because the same memory is used for all callables
+	byte* data = malloc(64);
+	if (data == NULL) {
+		// OOM
+		returns("arduino OOM");
+		return;
+	}
+	byte* incoming = &dataArray[2];
+	for (int i = 0; i < 64; i++) {
+		data[i] = incoming[i];
+	}
 
-// 	// Note: the lifetime of temp is not guaranteed to be long
-// 	// don't use this pointer after instantiation
-// 	write_job* temp = vector_add_asg(&write_jobs);
-// 	temp->address = address;
-// 	temp->data = data;
-// 	temp->is_page_write = true;
-// 	// temp = NULL; // commented out for performance (does it matter tho?)
-// 	has_write_job = true;
-// }
+	// Note: the lifetime of temp is not guaranteed to be long
+	// don't use this pointer after instantiation
+	write_job* temp = vector_add_asg(&write_jobs);
+	temp->address = address;
+	temp->data = data;
+	temp->is_page_write = true;
+	// temp = NULL; // commented out for performance (does it matter tho?)
+	has_write_job = true;
+}
 
 // temp
 void noop(byte dataLength, byte data[]) {}
@@ -375,7 +435,7 @@ BEGIN_CALLABLES {
 	// readPage takes in address (2 bytes, must be divisible by 64) and returns 64 bytes of data
 	{"read_page", readEEPROMPage_callable},
 	// writePage takes in address (2 bytes, must be divisible by 64) and 64 bytes of data
-	{"write_page", noop},
+	{"write_page", writeEEPROMPage_callable},
 	{"hexdump16", hexdump16_callable},
 	{"hexdump32", hexdump32_callable},
 } END_CALLABLES;

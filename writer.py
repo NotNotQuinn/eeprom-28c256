@@ -1,5 +1,4 @@
 import camino
-import timeit
 from typing import List
 # Little endian (least significant byte is stored at lowest address)
 
@@ -24,9 +23,10 @@ class EEPROM_Programmer():
         if byte > 0xFF or byte < 0:
             raise ValueError(f"Byte out of range 0x00-0xFF: got 0x{byte:04x}")
 
-        self.arduino.write(address & 0xFF, address >> 8, byte)
+        return self.arduino.write(address & 0xFF, address >> 8, byte)
 
     def _hexdump16(self, address: int):
+        """Returns a hexdump string, or a string starting with "[arduino error]" describing the error."""
         if address > self.MAX_ADDRESS or address < 0:
             raise ValueError(f"Address out of range 0x0000-{hex(self.MAX_ADDRESS)}: got 0x{address:04x}")
 
@@ -36,6 +36,7 @@ class EEPROM_Programmer():
         return self.arduino.hexdump16(address & 0xFF, address >> 8, out=str)
 
     def _hexdump32(self, address: int):
+        """Returns a two line hexdump string, or a string starting with "[arduino error]" describing the error."""
         if address > self.MAX_ADDRESS or address < 0:
             raise ValueError(f"Address out of range 0x0000-{hex(self.MAX_ADDRESS)}: got 0x{address:04x}")
 
@@ -45,7 +46,7 @@ class EEPROM_Programmer():
         return self.arduino.hexdump32(address & 0xFF, address >> 8, out=str)
 
     def _read_page(self, address: int):
-        """May return None on errors within the arduino"""
+        """Returns None on errors within the arduino."""
         if address > self.MAX_ADDRESS or address < 0:
             raise ValueError(f"Address out of range 0x0000-{hex(self.MAX_ADDRESS)}: got 0x{address:04x}")
 
@@ -55,6 +56,7 @@ class EEPROM_Programmer():
         return self.arduino.read_page(address & 0xFF, address >> 8, out=bytes)
 
     def _write_page(self, address: int, data: List[int]):
+        """Returns None on success, returns a string for errors within the arduino."""
         if address > self.MAX_ADDRESS or address < 0:
             raise ValueError(f"Address out of range 0x0000-{hex(self.MAX_ADDRESS)}: got 0x{address:04x}")
 
@@ -64,7 +66,12 @@ class EEPROM_Programmer():
         if len(data) != 64:
             raise ValueError(f"Data array must be length 64: got {len(data)}")
 
-        self.arduino.write_page(address & 0xFF, address >> 8, *data)
+        return self.arduino.write_page(address & 0xFF, address >> 8, *data, out=str)
+
+    def _echo(self, data: bytes):
+        """Returns the bytes you send."""
+
+        return self.arduino.echo(data)
 
 
 connection = camino.SerialConnection(port='COM3', baud=115200)
@@ -75,7 +82,9 @@ eeprom = EEPROM_Programmer(camino.Arduino(connection))
 # for i in range(0x0000, 0x8000, 0x20):
 #     print(eeprom._hexdump32(i))
 
-for a in range(0x0000, 0x8000, 0x40):
+# print(f'{eeprom._write_page(0, [0xc0, 0xff, 0xee, 0x00] * 0x10) = }')
+
+for a in range(0x0000, 0x80, 0x40):
     # print(eeprom._hexdump32(a))
     # print(eeprom._hexdump32(a+0x20))
     d = eeprom._read_page(a)
