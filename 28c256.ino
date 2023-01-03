@@ -40,7 +40,6 @@
 #define EEPROM27 35
 //      EEPROM28 ~~
 
-
 // NOP instruction :) for nanosecond delays
 // Each should be 62.5 ns @ 16MHz clock
 // (according to the internet)
@@ -131,16 +130,30 @@ char *hexdump16(unsigned int address) {
 	return msg;
 }
 
+// https://stackoverflow.com/questions/111928/is-there-a-printf-converter-to-print-in-binary-format#3208376
+#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
+#define BYTE_TO_BINARY(byte)  \
+  (byte & 0x80 ? '1' : '0'), \
+  (byte & 0x40 ? '1' : '0'), \
+  (byte & 0x20 ? '1' : '0'), \
+  (byte & 0x10 ? '1' : '0'), \
+  (byte & 0x08 ? '1' : '0'), \
+  (byte & 0x04 ? '1' : '0'), \
+  (byte & 0x02 ? '1' : '0'), \
+  (byte & 0x01 ? '1' : '0') 
+
 void setup() {
 	// Default control pin settings: (set before pins are enabled)
 	digitalWrite(CHIP_ENABLE, LOW); // enable the chip
 	digitalWrite(OUTPUT_ENABLE, LOW); // enable output from the chip
 	digitalWrite(WRITE_ENABLE, HIGH); // disable writing to the chip
+  digitalWrite(LED_BUILTIN, HIGH); // extra 5v pin
 
 	// Control pins: always output
 	pinMode(CHIP_ENABLE, OUTPUT);
 	pinMode(OUTPUT_ENABLE, OUTPUT);
 	pinMode(WRITE_ENABLE, OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
 
 	// Address pins: always output
 	for (int i = 0; i < ADDR_PINS_LEN; i++) {
@@ -164,16 +177,51 @@ void setup() {
 	camino.begin(115200);
 #else
 	Serial.begin(115200);
-	byte msg[4] = {0xff, 0xff, 0xff, 0x04};
-	byte data[64];
-	for (int i = 0; i < 64; i++) {
-		data[i] = msg[i%4];
-	}
-	writeEEPROMPage(0x00, data);
-	writeEEPROMPage(0x40, data);
-	writeEEPROMPage(0x80, data);
-	writeEEPROMPage(0xc0, data);
-	hexdump();
+	byte msg[4] = {0x00, 0xff, 0x00, 0x00};
+	// byte data[64];
+	// for (int i = 0; i < 64; i++) {
+	// 	data[i] = msg[i%4];
+	// }
+	// writeEEPROMPage(0x00, data);
+	// writeEEPROMPage(0x40, data);
+	// writeEEPROMPage(0x80, data);
+	// writeEEPROMPage(0xc0, data);
+	// hexdump();
+  #define TRIAL_COUNT 64
+  unsigned int count = 0;
+  for (unsigned int i = 0; i < TRIAL_COUNT; i++)
+  for (unsigned int a = 0; a < 0x100; a++) {
+    byte got = readEEPROM(a);
+    byte expected = msg[a%4];
+
+    if (got != expected) {
+      if (expected == 0x00) {
+        Serial.print("Expected 0, got ");
+        Serial.println(got);
+      }
+      count++;
+      char text[40];
+      byte flipped = got ^ expected;
+      sprintf(text, "%04x: Expected %02x, got %02x.", a, expected, got);
+      Serial.print(text);
+      Serial.print("   (");
+      for (int i = 0; i < 8; i++) {
+        Serial.print(flipped & 0x80 ? '1' : '0');
+        flipped <<= 1;
+      }
+      Serial.println(" flipped)");
+    }
+  }
+
+  Serial.print("Done! ");
+  Serial.print((double(count)/(TRIAL_COUNT*64.0)) * 100);
+  Serial.print("% (");
+  Serial.print(count);
+  Serial.print("/");
+  Serial.print(TRIAL_COUNT*64);
+  Serial.print(") errors avg over ");
+  Serial.print(TRIAL_COUNT);
+  Serial.println(" trials.");
 #endif
 }
 
