@@ -100,7 +100,7 @@ void hexdump() {
 	// it is not available while using camino
 	return;
 #else
-	for (unsigned int i = 0U; i < 0x0100U; i += 16U) {
+	for (unsigned int i = 0U; i < 0x0200U; i += 16U) {
 		char *msg = hexdump16(i);
 		Serial.println(msg);
 		free(msg);
@@ -142,6 +142,8 @@ char *hexdump16(unsigned int address) {
   (byte & 0x02 ? '1' : '0'), \
   (byte & 0x01 ? '1' : '0') 
 
+// To keep from interference its best if the data wires (IO0-IO3) on the left side of the chip are NOT
+// in line (that is, parallel) with the address pins (A0-A7,A12,A14). :) The closer wires are more important.
 void setup() {
 	// Default control pin settings: (set before pins are enabled)
 	digitalWrite(CHIP_ENABLE, LOW); // enable the chip
