@@ -101,7 +101,7 @@ void hexdump() {
 	return;
 #else
 	for (unsigned int i = 0U; i < 0x0100U; i += 16U) {
-		char *msg = hexdump16(i);
+		char* msg = hexdump16(i);
 		Serial.println(msg);
 		free(msg);
 	}
@@ -110,52 +110,39 @@ void hexdump() {
 }
 
 // Returns 80 byte (allocated) string formatted in a hexdump manner :)
-char *hexdump16(unsigned int address) {
+char* hexdump16(unsigned int address) {
 	byte data[16];
 	char visualized[16];
 	for (unsigned int j = 0U; j < 16U; j++) {
-		byte b = readEEPROM(address+j);
+		byte b = readEEPROM(address + j);
 		data[j] = b;
 		visualized[j] = (isPrintable(b) && !isControl(b)) ? b : '.';
 	}
 
-	char *msg = malloc(80);
+	char* msg = malloc(80);
 	sprintf(msg,
-		"%04x:  %02x %02x %02x %02x %02x %02x %02x %02x  %02x %02x %02x %02x %02x %02x %02x %02x  |%.16s|",
-		address,
-		data[ 0], data[ 1], data[ 2], data[ 3], data[ 4], data[ 5], data[ 6], data[ 7],
-		data[ 8], data[ 9], data[10], data[11], data[12], data[13], data[14], data[15], visualized
-	);
+					"%04x:  %02x %02x %02x %02x %02x %02x %02x %02x  %02x %02x %02x %02x %02x %02x %02x %02x  |%.16s|",
+					address,
+					data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+					data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15], visualized);
 
 	return msg;
 }
-
-// https://stackoverflow.com/questions/111928/is-there-a-printf-converter-to-print-in-binary-format#3208376
-#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BINARY(byte)  \
-  (byte & 0x80 ? '1' : '0'), \
-  (byte & 0x40 ? '1' : '0'), \
-  (byte & 0x20 ? '1' : '0'), \
-  (byte & 0x10 ? '1' : '0'), \
-  (byte & 0x08 ? '1' : '0'), \
-  (byte & 0x04 ? '1' : '0'), \
-  (byte & 0x02 ? '1' : '0'), \
-  (byte & 0x01 ? '1' : '0') 
 
 // To keep from interference its best if the data wires (IO0-IO3) on the left side of the chip are NOT
 // in line (that is, parallel) with the address pins (A0-A7,A12,A14). :) The closer wires are more important.
 void setup() {
 	// Default control pin settings: (set before pins are enabled)
-	digitalWrite(CHIP_ENABLE, LOW); // enable the chip
-	digitalWrite(OUTPUT_ENABLE, LOW); // enable output from the chip
-	digitalWrite(WRITE_ENABLE, HIGH); // disable writing to the chip
-  digitalWrite(LED_BUILTIN, HIGH); // extra 5v pin
+	digitalWrite(CHIP_ENABLE, LOW);    // enable the chip
+	digitalWrite(OUTPUT_ENABLE, LOW);  // enable output from the chip
+	digitalWrite(WRITE_ENABLE, HIGH);  // disable writing to the chip
+	digitalWrite(LED_BUILTIN, HIGH);   // extra 5v pin
 
 	// Control pins: always output
 	pinMode(CHIP_ENABLE, OUTPUT);
 	pinMode(OUTPUT_ENABLE, OUTPUT);
 	pinMode(WRITE_ENABLE, OUTPUT);
-  pinMode(LED_BUILTIN, OUTPUT);
+	pinMode(LED_BUILTIN, OUTPUT);
 
 	// Address pins: always output
 	for (int i = 0; i < ADDR_PINS_LEN; i++) {
@@ -173,70 +160,70 @@ void setup() {
 	// 	writeEEPROM(i, msg[i%4]);
 	// }
 
-  // Delay to allow for the chip to power up completely
-  // and do whatever it is that it does.
-  // Otherwise, the first 28 or so writes with a page write don't go
-  // through.
+	// Delay to allow for the chip to power up completely
+	// and do whatever it is that it does.
+	// Otherwise, the first 28 or so writes with a page write don't go
+	// through.
 	delay(100);
 
 #ifdef USE_CAMINO
 	camino.begin(115200);
 #else
 	Serial.begin(115200);
-  #define num_msgs 8
-  byte msg[num_msgs][4] = {
-    {0xA5, 0xA5, 0xA5, 0xA5},
-    {0x00, 0xFA, 0xCA, 0xDE},
-    {0xC0, 0xFF, 0xEE, 0x00},
-    {0xDE, 0xAD, 0xBE, 0xEF},
-    {0xBE, 0xEF, 0xDE, 0xAD},
-    {0xCA, 0xFE, 0xD0, 0x0D},
-    {0xBA, 0xAA, 0xAA, 0xAD},
-    {0x8B, 0xAD, 0xF0, 0x0D}
-  };
+#define num_msgs 8
+	byte msg[num_msgs][4] = {
+		{ 0xA5, 0xA5, 0xA5, 0xA5 },
+		{ 0x00, 0xFA, 0xCA, 0xDE },
+		{ 0xC0, 0xFF, 0xEE, 0x00 },
+		{ 0xDE, 0xAD, 0xBE, 0xEF },
+		{ 0xBE, 0xEF, 0xDE, 0xAD },
+		{ 0xCA, 0xFE, 0xD0, 0x0D },
+		{ 0xBA, 0xAA, 0xAA, 0xAD },
+		{ 0x8B, 0xAD, 0xF0, 0x0D }
+	};
 
-  // Cycles through one message per trial
-  #define TRIAL_COUNT 64
-  unsigned int count = 0;
-  for (unsigned int i = 0; i < TRIAL_COUNT; i++) {
-	byte data[64];
-	for (int j = 0; j < 64; j++) {
-		data[j] = msg[i%num_msgs][j%4];
+// Cycles through one message per trial
+#define TRIAL_COUNT 64
+	unsigned int count = 0;
+	for (unsigned int i = 0; i < TRIAL_COUNT; i++) {
+		byte data[64];
+		for (int j = 0; j < 64; j++) {
+			data[j] = msg[i % num_msgs][j % 4];
+		}
+		writeEEPROMPage(0x00, data);
+		writeEEPROMPage(0x40, data);
+		writeEEPROMPage(0x80, data);
+		writeEEPROMPage(0xc0, data);
+		// hexdump();
+		for (unsigned int a = 0; a < 0x100; a++) {
+			byte got = readEEPROM(a);
+			byte expected = msg[i % num_msgs][a % 4];
+
+			if (got != expected) {
+				count++;
+				char text[40];
+				byte flipped = got ^ expected;
+				sprintf(text, "%04x: Expected %02x, got %02x.", a, expected, got);
+				Serial.print(text);
+				Serial.print("   (");
+				for (int i = 0; i < 8; i++) {
+					Serial.print(flipped & 0x80 ? '1' : '0');
+					flipped <<= 1;
+				}
+				Serial.println(" flipped)");
+			}
+		}
 	}
-	writeEEPROMPage(0x00, data);
-	writeEEPROMPage(0x40, data);
-	writeEEPROMPage(0x80, data);
-	writeEEPROMPage(0xc0, data);
-	// hexdump();
-  for (unsigned int a = 0; a < 0x100; a++) {
-    byte got = readEEPROM(a);
-    byte expected = msg[i%num_msgs][a%4];
 
-    if (got != expected) {
-      count++;
-      char text[40];
-      byte flipped = got ^ expected;
-      sprintf(text, "%04x: Expected %02x, got %02x.", a, expected, got);
-      Serial.print(text);
-      Serial.print("   (");
-      for (int i = 0; i < 8; i++) {
-        Serial.print(flipped & 0x80 ? '1' : '0');
-        flipped <<= 1;
-      }
-      Serial.println(" flipped)");
-    }
-  }
-  }
-
-  Serial.print("Done! ");
-  Serial.print((double(count)/(TRIAL_COUNT*64.0)) * 100);
-  Serial.print("% (");
-  Serial.print(count);
-  Serial.print("/");
-  Serial.print(TRIAL_COUNT*64);
-  Serial.print(") errors avg over ");
-  Serial.print(TRIAL_COUNT);
-  Serial.println(" trials.");
+	Serial.print("Done! ");
+	Serial.print((double(count) / (TRIAL_COUNT * 64.0)) * 100);
+	Serial.print("% (");
+	Serial.print(count);
+	Serial.print("/");
+	Serial.print(TRIAL_COUNT * 64);
+	Serial.print(") errors avg over ");
+	Serial.print(TRIAL_COUNT);
+	Serial.println(" trials.");
 #endif
 }
 
@@ -251,10 +238,10 @@ void loop() {
 	// Disable interrupts while messing with write_jobs array
 	// because jobs are added through interrupts, and we don't want that to
 	// happen in the middle
-	cli(); // disable interrupts ("cli()" == "clear" the "interrupts" flag)
+	cli();  // disable interrupts ("cli()" == "clear" the "interrupts" flag)
 	write_job job = write_jobs[0];
 	vector_remove(&write_jobs, 0);
-	sei(); // re-enable interrupts ("sei()" == "set" the "interrupts" flag)
+	sei();  // re-enable interrupts ("sei()" == "set" the "interrupts" flag)
 
 	if (job.is_page_write) {
 		writeEEPROMPage(job.address, job.data);
@@ -295,13 +282,17 @@ byte readEEPROM(unsigned int address) {
 	writeAddress(address);
 
 	// Wait >=350 ns before reading (~375 ns)
-	NOP; NOP; NOP; // 3 * 62.5 ns @ 16,000,000hz
-	NOP; NOP; NOP; // 3 * 62.5 ns @ 16,000,000hz
+	NOP;
+	NOP;
+	NOP;  // 3 * 62.5 ns @ 16,000,000hz
+	NOP;
+	NOP;
+	NOP;  // 3 * 62.5 ns @ 16,000,000hz
 
 	// Serial.print("Reading: ");
 	byte data;
 	// Read the IO pins
-	for (int i = IO_PINS_LEN-1; i >= 0; i--) {
+	for (int i = IO_PINS_LEN - 1; i >= 0; i--) {
 		byte bit = digitalRead(IO_PINS[i]);
 		data = (data << 1) | bit;
 		// Serial.print(bit);
@@ -315,7 +306,7 @@ void writeEEPROM(unsigned int address, byte data) {
 	// Configure initial control pins
 	digitalWrite(OUTPUT_ENABLE, HIGH);
 	digitalWrite(WRITE_ENABLE, HIGH);
-	cli(); // No interrupts can happen, because reads will mess this up.
+	cli();  // No interrupts can happen, because reads will mess this up.
 	// Set the address
 	writeAddress(address);
 
@@ -337,7 +328,7 @@ void writeEEPROM(unsigned int address, byte data) {
 
 void writeEEPROMPage(unsigned int address, byte* data) {
 	if (address % 0x40 != 0) {
-		return; // idk if this is a good idea
+		return;  // idk if this is a good idea
 	}
 
 	cli();
@@ -351,7 +342,7 @@ void writeEEPROMPage(unsigned int address, byte* data) {
 
 	for (int i = 0; i < 64; i++) {
 		byte currentData = data[i];
-		writeAddress(address+i);
+		writeAddress(address + i);
 		digitalWrite(WRITE_ENABLE, LOW);
 		// Write data
 		for (int i = 0; i < IO_PINS_LEN; i++) {
@@ -359,7 +350,9 @@ void writeEEPROMPage(unsigned int address, byte* data) {
 			currentData >>= 1;
 		}
 		// wait >= 50ns
-		NOP; NOP; NOP;
+		NOP;
+		NOP;
+		NOP;
 		digitalWrite(WRITE_ENABLE, HIGH);
 		// High pulse must be >= 50ns
 	}
@@ -403,7 +396,7 @@ void hexdump16_callable(byte dataLength, byte data[]) {
 	}
 	char* msg = hexdump16(address);
 	returns(msg);
-	free(msg); // BE FREE LITTLE ONES
+	free(msg);  // BE FREE LITTLE ONES
 }
 
 void hexdump32_callable(byte dataLength, byte data[]) {
@@ -414,7 +407,7 @@ void hexdump32_callable(byte dataLength, byte data[]) {
 	}
 
 	char* msg1 = hexdump16(address);
-	char* msg2 = hexdump16(address+16);
+	char* msg2 = hexdump16(address + 16);
 
 	// Join the two strings with newline.
 	char big_msg[160];
@@ -433,12 +426,12 @@ void hexdump32_callable(byte dataLength, byte data[]) {
 	// Copy string 2
 	int j;
 	for (j = 0; msg2[j] != 0; j++) {
-		big_msg[i+j] = msg2[j];
+		big_msg[i + j] = msg2[j];
 	}
 	free(msg2);
 
 	// Null termination
-	big_msg[i+j] = 0;
+	big_msg[i + j] = 0;
 
 	returns(big_msg);
 }
@@ -452,7 +445,7 @@ void readEEPROMPage_callable(byte dataLength, byte dataArray[]) {
 
 	byte outgoing[64];
 	for (int i = 0; i < 64; i++) {
-		outgoing[i] = readEEPROM(address+i);
+		outgoing[i] = readEEPROM(address + i);
 	}
 
 	returns(64, outgoing);
@@ -490,16 +483,16 @@ void writeEEPROMPage_callable(byte dataLength, byte dataArray[]) {
 
 // temp
 void noop(byte dataLength, byte data[]) {}
-BEGIN_CALLABLES {
+BEGIN_CALLABLES{
 	// read takes in address (2 bytes) and returns data (1 byte)
-	{"read", readEEPROM_callable},
+	{ "read", readEEPROM_callable },
 	// write takes in address (2 bytes) and data (1 byte)
-	{"write", writeEEPROM_callable},
+	{ "write", writeEEPROM_callable },
 	// readPage takes in address (2 bytes, must be divisible by 64) and returns 64 bytes of data
-	{"read_page", readEEPROMPage_callable},
+	{ "read_page", readEEPROMPage_callable },
 	// writePage takes in address (2 bytes, must be divisible by 64) and 64 bytes of data
-	{"write_page", writeEEPROMPage_callable},
-	{"hexdump16", hexdump16_callable},
-	{"hexdump32", hexdump32_callable},
+	{ "write_page", writeEEPROMPage_callable },
+	{ "hexdump16", hexdump16_callable },
+	{ "hexdump32", hexdump32_callable },
 } END_CALLABLES;
 #endif
