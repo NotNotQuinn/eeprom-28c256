@@ -1,0 +1,16 @@
+TODO
+===============
+
+[x] Reliable arduino-EEPROM connection.
+  [x] Read/Write 100% reliable from arduino.
+[ ] Reliable PC-arduino connection.
+  [ ] Data transfer 100% reliable from PC.
+  [ ] E2E test of writing to EEPROM 100% reliable.
+[ ] Writing from PC of full files to EEPROM.
+[ ] CLI utility to write files to EEPROM.
+
+Next
+===============
+[ ] Compile programs for 6502
+[ ] Upload to chip
+[ ] Run programs
