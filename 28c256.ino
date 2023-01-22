@@ -100,7 +100,7 @@ void hexdump() {
 	// it is not available while using camino
 	return;
 #else
-	for (unsigned int i = 0U; i < 0x0200U; i += 16U) {
+	for (unsigned int i = 0U; i < 0x0100U; i += 16U) {
 		char *msg = hexdump16(i);
 		Serial.println(msg);
 		free(msg);
@@ -173,34 +173,46 @@ void setup() {
 	// 	writeEEPROM(i, msg[i%4]);
 	// }
 
-	// delay(100);
+  // Delay to allow for the chip to power up completely
+  // and do whatever it is that it does.
+  // Otherwise, the first 28 or so writes with a page write don't go
+  // through.
+	delay(100);
 
 #ifdef USE_CAMINO
 	camino.begin(115200);
 #else
 	Serial.begin(115200);
-	byte msg[4] = {0x00, 0xff, 0x00, 0x00};
-	// byte data[64];
-	// for (int i = 0; i < 64; i++) {
-	// 	data[i] = msg[i%4];
-	// }
-	// writeEEPROMPage(0x00, data);
-	// writeEEPROMPage(0x40, data);
-	// writeEEPROMPage(0x80, data);
-	// writeEEPROMPage(0xc0, data);
-	// hexdump();
+  #define num_msgs 8
+  byte msg[num_msgs][4] = {
+    {0xA5, 0xA5, 0xA5, 0xA5},
+    {0x00, 0xFA, 0xCA, 0xDE},
+    {0xC0, 0xFF, 0xEE, 0x00},
+    {0xDE, 0xAD, 0xBE, 0xEF},
+    {0xBE, 0xEF, 0xDE, 0xAD},
+    {0xCA, 0xFE, 0xD0, 0x0D},
+    {0xBA, 0xAA, 0xAA, 0xAD},
+    {0x8B, 0xAD, 0xF0, 0x0D}
+  };
+
+  // Cycles through one message per trial
   #define TRIAL_COUNT 64
   unsigned int count = 0;
-  for (unsigned int i = 0; i < TRIAL_COUNT; i++)
+  for (unsigned int i = 0; i < TRIAL_COUNT; i++) {
+	byte data[64];
+	for (int j = 0; j < 64; j++) {
+		data[j] = msg[i%num_msgs][j%4];
+	}
+	writeEEPROMPage(0x00, data);
+	writeEEPROMPage(0x40, data);
+	writeEEPROMPage(0x80, data);
+	writeEEPROMPage(0xc0, data);
+	// hexdump();
   for (unsigned int a = 0; a < 0x100; a++) {
     byte got = readEEPROM(a);
-    byte expected = msg[a%4];
+    byte expected = msg[i%num_msgs][a%4];
 
     if (got != expected) {
-      if (expected == 0x00) {
-        Serial.print("Expected 0, got ");
-        Serial.println(got);
-      }
       count++;
       char text[40];
       byte flipped = got ^ expected;
@@ -213,6 +225,7 @@ void setup() {
       }
       Serial.println(" flipped)");
     }
+  }
   }
 
   Serial.print("Done! ");
