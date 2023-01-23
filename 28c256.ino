@@ -1,7 +1,7 @@
 // EEPROM (28C256) datasheet: https://eater.net/datasheets/28c256.pdf
 // This is an EEPROM read/writer. :)
 
-// #define USE_CAMINO
+#define USE_CAMINO
 
 #ifdef USE_CAMINO
 #include <Camino.h>
@@ -364,7 +364,7 @@ void writeEEPROMPage(unsigned int address, byte* data) {
 
 #ifdef USE_CAMINO
 void readEEPROM_callable(byte dataLength, byte data[]) {
-	returns(readEEPROM(data[0] | data[1] << 8));
+	returns((byte)readEEPROM(data[0] | data[1] << 8));
 }
 
 void writeEEPROM_callable(byte dataLength, byte dataArray[]) {
@@ -451,7 +451,7 @@ void readEEPROMPage_callable(byte dataLength, byte dataArray[]) {
 	returns(64, outgoing);
 }
 
-// NOTE: UNTESTED
+// Note: has been tested
 void writeEEPROMPage_callable(byte dataLength, byte dataArray[]) {
 	unsigned int address = dataArray[0] | dataArray[1] << 8;
 	if (address % 64 != 0) {
