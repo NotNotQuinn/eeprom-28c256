@@ -184,9 +184,9 @@ class EEPROM_Programmer():
         """
 
         for a in range(0x0000, stop, 0x40):
-            # print(eeprom._hexdump32(a))
-            # print(eeprom._hexdump32(a+0x20))
-            d = eeprom._read_page(a)
+            # print(self._hexdump32(a))
+            # print(self._hexdump32(a+0x20))
+            d = self._read_page(a)
             print(
                 f"{a+0x00:04x}:  {d[0+0x00]:02x} {d[1+0x00]:02x} {d[2+0x00]:02x} {d[3+0x00]:02x} {d[4+0x00]:02x} {d[5+0x00]:02x} {d[6+0x00]:02x} {d[7+0x00]:02x}  {d[8+0x00]:02x} {d[9+0x00]:02x} {d[10+0x00]:02x} {d[11+0x00]:02x} {d[12+0x00]:02x} {d[13+0x00]:02x} {d[14+0x00]:02x} {d[15+0x00]:02x}  |{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in d[0x00:0x10]])}|\n"
                 f"{a+0x10:04x}:  {d[0+0x10]:02x} {d[1+0x10]:02x} {d[2+0x10]:02x} {d[3+0x10]:02x} {d[4+0x10]:02x} {d[5+0x10]:02x} {d[6+0x10]:02x} {d[7+0x10]:02x}  {d[8+0x10]:02x} {d[9+0x10]:02x} {d[10+0x10]:02x} {d[11+0x10]:02x} {d[12+0x10]:02x} {d[13+0x10]:02x} {d[14+0x10]:02x} {d[15+0x10]:02x}  |{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in d[0x10:0x20]])}|\n"
@@ -232,17 +232,19 @@ class EEPROM_Programmer():
         percent = (count / total) * 100
         print(f"Done! {percent}% ({count}/{total}) errors avg over {trial_count} trials.")
 
+
 def create_file(filename):
-    buf = bytes([0xea] * EEPROM_Programmer.EEPROM_SIZE)
+    buf = bytes([ord('Q')] * EEPROM_Programmer.EEPROM_SIZE)
     with open(filename, 'wb') as f:
         f.write(buf)
+
 
 def main():
     FILE_LEN = EEPROM_Programmer.EEPROM_SIZE
 
     print('[arduino] Connecting...')
     connection = camino.SerialConnection(port='COM3', baud=115200)
-    eeprom = EEPROM_Programmer(camino.Arduino(connection, silent=True))
+    eeprom = EEPROM_Programmer(camino.Arduino(connection))
     print("[arduino] Connected!")
 
     filename = "./dank_file.o"
@@ -283,12 +285,12 @@ def main_cli():
     p.add_argument("-v", "--verbose", help="show more output", action="store_true", default=False)
     mode = p.add_argument_group("required arguments")
     mode_required = mode.add_mutually_exclusive_group(required=True)
-    mode_required.add_argument("--download", "-D",
+    mode_required.add_argument("-D", "--download",
                    metavar="OUTFILE",
                    type=argparse.FileType('wb'),
                    help="download 32768 bytes from the EEPROM"
                    )
-    mode_required.add_argument("--upload", "-U",
+    mode_required.add_argument("-U", "--upload",
                    metavar="INFILE",
                    type=argparse.FileType('rb'),
                    help="upload 32768 bytes to the EEPROM"
@@ -303,4 +305,4 @@ def main_cli():
 
 
 if __name__ == "__main__":
-    main_cli()
+    main()
