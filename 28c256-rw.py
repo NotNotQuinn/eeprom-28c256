@@ -1,4 +1,14 @@
-import _camino as camino
+import logging
+import io
+logger = logging.getLogger(__name__)
+
+def config_logging(level: int, force=False):
+    logging.basicConfig(format='%(levelname)-8s | %(name)s: %(message)s',
+                        level=level, force=force)
+
+# logging configuration
+config_logging(logging.ERROR)
+import camino
 import time
 from typing import List, Union
 # Little endian (least significant byte is stored at lowest address)
@@ -184,8 +194,8 @@ class EEPROM_Programmer():
         """
 
         for a in range(0x0000, stop, 0x40):
-            # print(self._hexdump32(a))
-            # print(self._hexdump32(a+0x20))
+            # logger.debug(self._hexdump32(a))
+            # logger.debug(self._hexdump32(a+0x20))
             d = self._read_page(a)
             print(
                 f"{a+0x00:04x}:  {d[0+0x00]:02x} {d[1+0x00]:02x} {d[2+0x00]:02x} {d[3+0x00]:02x} {d[4+0x00]:02x} {d[5+0x00]:02x} {d[6+0x00]:02x} {d[7+0x00]:02x}  {d[8+0x00]:02x} {d[9+0x00]:02x} {d[10+0x00]:02x} {d[11+0x00]:02x} {d[12+0x00]:02x} {d[13+0x00]:02x} {d[14+0x00]:02x} {d[15+0x00]:02x}  |{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in d[0x00:0x10]])}|\n"
@@ -197,7 +207,7 @@ class EEPROM_Programmer():
 
     def write_test(self, trial_count:int = 8):
         """Runs a series of read/write trials on the first 4 EEPROM pages to verify everything is working correctly.
-        Reports to stdout any errors as they occur, and the % of errors after all the trails are finished.
+        Reports any errors as they occur, and the % of errors after all the trails are finished.
 
         Args:
             trial_count (int, optional): The number of times to write/read the first 4 EEPROM pages. Defaults to 8.
@@ -221,16 +231,17 @@ class EEPROM_Programmer():
                 if got != expected:
                     count += 1
                     flipped = got ^ expected
-                    print(f"{a:04x}: Expected {expected:02x}, got {got:02x}.", end="")
-                    print("   (", end="")
+                    msg = ""
+                    msg += f"{a:04x}: Expected {expected:02x}, got {got:02x}.   ("
                     for _ in range(8):
-                        print('1' if flipped & 0x80 else '0', end="")
+                        msg += '1' if flipped & 0x80 else '0'
                         flipped <<= 1
-                    print(" flipped)")
+                    msg += " flipped)"
+                    logger.error(msg)
 
         total = trial_count * 256
         percent = (count / total) * 100
-        print(f"Done! {percent}% ({count}/{total}) errors avg over {trial_count} trials.")
+        logger.info(f"Done! {percent}% ({count}/{total}) errors avg over {trial_count} trials.")
 
 
 def create_file(filename):
@@ -239,14 +250,18 @@ def create_file(filename):
         f.write(buf)
 
 
+def get_eeprom() -> EEPROM_Programmer:
+    logging.info('[arduino] Connecting...')
+    connection = camino.SerialConnection(port='COM3', baud=115200)
+    eeprom = EEPROM_Programmer(camino.Arduino(connection))
+    logging.info('[arduino] Connected!')
+    return eeprom
+
+
 def main():
     FILE_LEN = EEPROM_Programmer.EEPROM_SIZE
 
-    print('[arduino] Connecting...')
-    connection = camino.SerialConnection(port='COM3', baud=115200)
-    eeprom = EEPROM_Programmer(camino.Arduino(connection))
-    print("[arduino] Connected!")
-
+    eeprom = get_eeprom()
     filename = "./dank_file.o"
     create_file(filename)
 
@@ -254,13 +269,13 @@ def main():
         buf = bytes(f.read())
 
     if len(buf) != FILE_LEN:
-        print(f"FATAL: File length must be exactly {FILE_LEN} (0x{FILE_LEN:x}. Got {len(buf)} (0x{len(buf):x})")
+        logger.fatal(f"FATAL: File length must be exactly {FILE_LEN} (0x{FILE_LEN:x}. Got {len(buf)} (0x{len(buf):x})")
         exit(1)
 
     # Write file contents to EEPROM
     for addr in range(0, FILE_LEN, 64):
         eeprom._write_page(addr, buf[addr:addr+64])
-        print(f"Writing... [0x{addr:04x}] {100*((addr+64)/FILE_LEN):.2f}%", end='\r')
+        logging.info(f"Writing... [0x{addr:04x}] {100*((addr+64)/FILE_LEN):.2f}%", end='\r')
     print()
 
     # Read EEPROM and verify contents
@@ -282,27 +297,53 @@ def main_cli():
         prog="28c256-rw.py",
         description="Read/Write model 28c265 EEPROMs.",
     )
-    p.add_argument("-v", "--verbose", help="show more output", action="store_true", default=False)
+    p.add_argument("-v", "--verbose", help="Show more output. -v for WARN, -vv for INFO, -vvv for DEBUG. Default is ERROR", action="count", default=False)
     mode = p.add_argument_group("required arguments")
     mode_required = mode.add_mutually_exclusive_group(required=True)
     mode_required.add_argument("-D", "--download",
                    metavar="OUTFILE",
                    type=argparse.FileType('wb'),
-                   help="download 32768 bytes from the EEPROM"
+                   help="Download the EEPROM and store in OUTFILE"
                    )
     mode_required.add_argument("-U", "--upload",
                    metavar="INFILE",
                    type=argparse.FileType('rb'),
-                   help="upload 32768 bytes to the EEPROM"
+                   help="Upload INFILE to the EEPROM"
+                   )
+    mode_required.add_argument("-H", "--hexdump",
+                   action='store',
+                   metavar='[START:]STOP',
+                   nargs='?',
+                   default='0x8000',
+                   type=str,
+                   # TODO: Make this description true
+                   # TODO: Evaluate feature creep!
+                   help="Hexdump the EEPROM contents from addresses START to STOP. Addresses are rounded to multiples of 16. START is rounded down, STOP is rounded up. Defaults to dump the entire EEPROM."
                    )
     args = p.parse_args()
+
+    if args.verbose >= 3:
+        config_logging(logging.DEBUG, force=True)
+    elif args.verbose >= 2:
+        config_logging(logging.INFO, force=True)
+    elif args.verbose >= 1:
+        config_logging(logging.WARN, force=True)
+
+
     if args.upload != None:
         mode = "upload"
     elif args.download != None:
         mode = "download"
+    else:
+        mode = "hexdump"
+    # Mode and file are verified, we can now begin.
+    eeprom = get_eeprom()
 
-    print(mode)
+    print(args)
+
+    if mode == "hexdump":
+        eeprom.hexdump()
 
 
 if __name__ == "__main__":
-    main()
+    main_cli()
