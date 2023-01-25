@@ -1,16 +1,17 @@
 import logging
-import io
+from typing import List, Union
 logger = logging.getLogger(__name__)
 
-def config_logging(level: int, force=False):
+def config_logging(level: Union[int, str], force=False):
     logging.basicConfig(format='%(levelname)-8s | %(name)s: %(message)s',
                         level=level, force=force)
 
 # logging configuration
 config_logging(logging.ERROR)
+import argparse
 import camino
 import time
-from typing import List, Union
+import math
 # Little endian (least significant byte is stored at lowest address)
 
 
@@ -186,26 +187,38 @@ class EEPROM_Programmer():
 
     ### METHODS ###
 
-    def hexdump(self, stop: int=EEPROM_SIZE):
-        """Dumps EEPROM contents from 0x0000 to stop, rounding up to the nearest multiple of 64.
+    def hexdump(self, start: int=0, stop: int=10):
+        """Dumps EEPROM contents from start (rounded down to nearest multiple of 16) to stop (rounded up to the nearest multiple of 16).
 
         Args:
-            stop (int, optional): Stops hexdump after this address has been reached. Defaults to self.EEPROM_SIZE.
+            start (int, optional): Starts hexdump before or at this address. Defaults to 0.
+            stop (int, optional): Stops hexdump after or at this address. Defaults to EEPROM_SIZE.
         """
 
-        for a in range(0x0000, stop, 0x40):
-            # logger.debug(self._hexdump32(a))
-            # logger.debug(self._hexdump32(a+0x20))
-            d = self._read_page(a)
-            print(
-                f"{a+0x00:04x}:  {d[0+0x00]:02x} {d[1+0x00]:02x} {d[2+0x00]:02x} {d[3+0x00]:02x} {d[4+0x00]:02x} {d[5+0x00]:02x} {d[6+0x00]:02x} {d[7+0x00]:02x}  {d[8+0x00]:02x} {d[9+0x00]:02x} {d[10+0x00]:02x} {d[11+0x00]:02x} {d[12+0x00]:02x} {d[13+0x00]:02x} {d[14+0x00]:02x} {d[15+0x00]:02x}  |{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in d[0x00:0x10]])}|\n"
-                f"{a+0x10:04x}:  {d[0+0x10]:02x} {d[1+0x10]:02x} {d[2+0x10]:02x} {d[3+0x10]:02x} {d[4+0x10]:02x} {d[5+0x10]:02x} {d[6+0x10]:02x} {d[7+0x10]:02x}  {d[8+0x10]:02x} {d[9+0x10]:02x} {d[10+0x10]:02x} {d[11+0x10]:02x} {d[12+0x10]:02x} {d[13+0x10]:02x} {d[14+0x10]:02x} {d[15+0x10]:02x}  |{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in d[0x10:0x20]])}|\n"
-                f"{a+0x20:04x}:  {d[0+0x20]:02x} {d[1+0x20]:02x} {d[2+0x20]:02x} {d[3+0x20]:02x} {d[4+0x20]:02x} {d[5+0x20]:02x} {d[6+0x20]:02x} {d[7+0x20]:02x}  {d[8+0x20]:02x} {d[9+0x20]:02x} {d[10+0x20]:02x} {d[11+0x20]:02x} {d[12+0x20]:02x} {d[13+0x20]:02x} {d[14+0x20]:02x} {d[15+0x20]:02x}  |{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in d[0x20:0x30]])}|\n"
-                f"{a+0x30:04x}:  {d[0+0x30]:02x} {d[1+0x30]:02x} {d[2+0x30]:02x} {d[3+0x30]:02x} {d[4+0x30]:02x} {d[5+0x30]:02x} {d[6+0x30]:02x} {d[7+0x30]:02x}  {d[8+0x30]:02x} {d[9+0x30]:02x} {d[10+0x30]:02x} {d[11+0x30]:02x} {d[12+0x30]:02x} {d[13+0x30]:02x} {d[14+0x30]:02x} {d[15+0x30]:02x}  |{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in d[0x30:0x40]])}|"
-            )
-        print("=-------------------------------------------------------------------------=")
+        if stop <= start: raise ValueError("Start must be less than stop.")
 
-    def write_test(self, trial_count:int = 8):
+        # Perform the rounding of inputs
+        start = (math.trunc(start/0x10))*0x10
+        stop = (math.ceil(stop/0x10))*0x10
+
+        # Read pages (64 bytes) to be more efficient
+        first_page_number = (math.trunc(start/0x40))*0x40
+        final_page_number = (math.ceil(stop/0x40))*0x40
+
+        break_all = False
+        for i in range(first_page_number, final_page_number, 0x40):
+            if break_all: break
+            data = self._read_page(i)
+            for j in range(0, 0x40, 0x10):
+                a = i+j
+                if a < start: continue
+                if a >= stop: break_all = True; break
+                d = data[j:j+0x10]
+                dump = f"{a:04x}:  {d[0]:02x} {d[1]:02x} {d[2]:02x} {d[3]:02x} {d[4]:02x} {d[5]:02x} {d[6]:02x} {d[7]:02x}  {d[8]:02x} {d[9]:02x} {d[10]:02x} {d[11]:02x} {d[12]:02x} {d[13]:02x} {d[14]:02x} {d[15]:02x}  |{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in d[0x00:0x10]])}|"
+                print(dump)
+
+
+    def write_test(self, trial_count: int=8):
         """Runs a series of read/write trials on the first 4 EEPROM pages to verify everything is working correctly.
         Reports any errors as they occur, and the % of errors after all the trails are finished.
 
@@ -250,11 +263,13 @@ def create_file(filename):
         f.write(buf)
 
 
-def get_eeprom() -> EEPROM_Programmer:
-    logging.info('[arduino] Connecting...')
-    connection = camino.SerialConnection(port='COM3', baud=115200)
+def get_eeprom(port='COM3', baud=115200) -> EEPROM_Programmer:
+    logger.info('Connecting to arduino...')
+    logger.debug(f'  {port = }')
+    logger.debug(f'  {baud = }')
+    connection = camino.SerialConnection(port=port, baud=baud)
     eeprom = EEPROM_Programmer(camino.Arduino(connection))
-    logging.info('[arduino] Connected!')
+    logger.info('Arduino connected!')
     return eeprom
 
 
@@ -290,14 +305,13 @@ def main():
     # eeprom.hexdump()
 
 
-def main_cli():
-    import argparse
+def get_cli_args():
     p = argparse.ArgumentParser(
         add_help=True,
         prog="28c256-rw.py",
         description="Read/Write model 28c265 EEPROMs.",
     )
-    p.add_argument("-v", "--verbose", help="Show more output. -v for WARN, -vv for INFO, -vvv for DEBUG. Default is ERROR", action="count", default=False)
+    p.add_argument("-v", "--verbose", help="Show more output. -v for WARNING, -vv for INFO, -vvv for DEBUG. Default is ERROR", action="count", default=False)
     mode = p.add_argument_group("required arguments")
     mode_required = mode.add_mutually_exclusive_group(required=True)
     mode_required.add_argument("-D", "--download",
@@ -314,32 +328,54 @@ def main_cli():
                    action='store',
                    metavar='[START:]STOP',
                    nargs='?',
-                   default='0x8000',
+                   const='0x8000',
                    type=str,
                    # TODO: Make this description true
                    # TODO: Evaluate feature creep!
                    help="Hexdump the EEPROM contents from addresses START to STOP. Addresses are rounded to multiples of 16. START is rounded down, STOP is rounded up. Defaults to dump the entire EEPROM."
                    )
     args = p.parse_args()
+    return args
 
+
+def main_cli():
+    args = get_cli_args()
+
+    # TODO: Abstract all of this logging level logic to config_logging(args.verbose) (including the "verbosity is.." message)
+    logging_level = "ERROR"
     if args.verbose >= 3:
-        config_logging(logging.DEBUG, force=True)
+        args.verbose = 3
+        logging_level = "DEBUG"
+        config_logging(logging_level, force=True)
     elif args.verbose >= 2:
-        config_logging(logging.INFO, force=True)
+        logging_level = "INFO"
+        config_logging(logging_level, force=True)
+        logging.getLogger("camino").setLevel("WARNING")
     elif args.verbose >= 1:
-        config_logging(logging.WARN, force=True)
+        logging_level = "WARNING"
+        config_logging(logging_level, force=True)
 
+    logger.debug(f'Verbosity set to {args.verbose} ({logging_level})')
+    logger.debug(f"Input interpretation: {args!r}")
+    logger.debug(f'  {args.verbose = }')
+    logger.debug(f'  {args.upload = }')
+    logger.debug(f'  {args.download = }')
+    logger.debug(f'  {args.hexdump = }')
 
     if args.upload != None:
         mode = "upload"
     elif args.download != None:
         mode = "download"
-    else:
+    elif args.hexdump != None:
         mode = "hexdump"
+    else:
+        logger.fatal("Input interpretation is ambiguous: no valid mode")
+        exit(1)
+
+    logger.debug(f'  {mode = }')
+
     # Mode and file are verified, we can now begin.
     eeprom = get_eeprom()
-
-    print(args)
 
     if mode == "hexdump":
         eeprom.hexdump()
