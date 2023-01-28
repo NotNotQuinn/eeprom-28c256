@@ -10,7 +10,8 @@
 #include "vec/vec.h"
 #include "vec/vec.c"
 
-// My custom magic numbers
+// EEPROM pins to Arduino pins:
+// The numbers on the right are the Arduino pin numbers.
 #define EEPROM01 22
 #define EEPROM02 23
 #define EEPROM03 24
@@ -136,13 +137,13 @@ void setup() {
 	digitalWrite(CHIP_ENABLE, LOW);    // enable the chip
 	digitalWrite(OUTPUT_ENABLE, LOW);  // enable output from the chip
 	digitalWrite(WRITE_ENABLE, HIGH);  // disable writing to the chip
-	digitalWrite(LED_BUILTIN, HIGH);   // extra 5v pin
+	// digitalWrite(LED_BUILTIN, HIGH);   // extra 5v pin
 
 	// Control pins: always output
 	pinMode(CHIP_ENABLE, OUTPUT);
 	pinMode(OUTPUT_ENABLE, OUTPUT);
 	pinMode(WRITE_ENABLE, OUTPUT);
-	pinMode(LED_BUILTIN, OUTPUT);
+	// pinMode(LED_BUILTIN, OUTPUT);
 
 	// Address pins: always output
 	for (int i = 0; i < ADDR_PINS_LEN; i++) {
