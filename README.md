@@ -114,7 +114,7 @@ To setup the software:
 	  flash the builtin LED.
 2. Install the `camino` library to your Arduino IDE.
 3. Download this repository from github onto your PC.
-4. Create a new project in the arduino IDE and copy the `28c256.ino` file into it.
+4. Create a new project in the arduino IDE and copy the `28c256.ino` file and `vec/` folder into it.
 5. Edit the section labeled "EEPROM pins to Arduino pins" such that the arduino pins match
    which pin you used when plugging in the EEPROM. This step is very important
    to get right the first time.
@@ -125,11 +125,35 @@ To setup the software:
 
 If you encounter issues setting up the EEPROM, there are a few things that might help you resolve your issues:
 
-* Double check that the arduino pins used to plug in the EEPROM are correctly recorded in `28c256.ino`. If any of these are swapped it might not be obvious, but the data written will be wrong when read by some other hardware. However: It will seem correct ONLY from the arduino's perspective. Only if pins 14, 20, 22, 27 or 28 are swapped the chip won't work, otherwise it will seem to work, but not actually. View the [datasheet](https://eater.net/datasheets/28c256.pdf) to see what pin has which function.
-* Try running the read/write tests. To access them, you have to remove the `#define USE_CAMINO` line near the beginning of `28c256.ino`. After uploading the file it will run a test to see if all the bytes written are read back properly by the arduino. This also works even if the connection using camino isn't working for some reason. There is a second copy of the same tests in `28c256-rw.py` that uses the camino connection. Try running both and compare.
-* If the above tests are giving different data every time you run them, then you might have a problem with interference between the wires. To solve this issue I had to make sure none of the IO pin's wires were directly parallel to any address pin's wires. This is especially important for the lower order address bits. Try moving the wires while the arduino-based tests are running to get a sense of what positioning of wires can cause issues.
-* If you are still having issues, try putting a 10 μF (microfarad) capacitor across each power pin of the EEPROM (GND & VCC). This will store a tiny amount of power closer to the chip. This solved some of my issues, but doesn't seem to be necessary as after removing them the issues haven't come back. Only try this if you already have the capacitors.
-* If you're still having issues and believe its a problem of this library/script  feel free to open an issue, and I'll try to resolve the issue as best I can when I have time. In your issue please be descriptive of what you have and have not tried, and what the results were. This will help me figure out what the issue might be quicker, as I will probably ask for this anyways.
+* Double check that the arduino pins used to plug in the EEPROM are correctly recorded in
+  `28c256.ino`. If any of these are swapped it might not be obvious, but the data written
+  will be wrong when read by some other hardware. However: It will seem correct ONLY from
+  the arduino's perspective. Only if pins 14, 20, 22, 27 or 28 are swapped the chip won't
+  work, otherwise it will seem to work, but not actually. View the
+  [datasheet](https://eater.net/datasheets/28c256.pdf) to see what pin has which function.
+  
+* Try running the read/write tests. To access them, you have to remove the `#define USE_CAMINO`
+  line near the beginning of `28c256.ino`. After uploading the file it will run a test to see
+  if all the bytes written are read back properly by the arduino. This also works even if the
+  connection using camino isn't working for some reason. There is a second copy of the same
+  tests in `28c256-rw.py` that uses the camino connection. Try running both and compare.
+  
+* If the above tests are giving different data every time you run them, then you might have
+  a problem with interference between the wires. To solve this issue I had to make sure none
+  of the IO pin's wires were directly parallel to any address pin's wires. This is especially
+  important for the lower order address bits. Try moving the wires while the arduino-based
+  tests are running to get a sense of what positioning of wires can cause issues.
+  
+* If you are still having issues, try putting a 10 μF (microfarad) capacitor across each power
+  pin of the EEPROM (GND & VCC). This will store a tiny amount of power closer to the chip.
+  This solved some of my issues, but doesn't seem to be necessary as after removing them the
+  issues haven't come back. Only try this if you already have the capacitors.
+  
+* If you're still having issues and believe its a problem of this library/script feel free to 
+  open an issue, and I'll try to resolve the issue as best I can when I have time. In your
+  issue please be descriptive of what you have and have not tried, and what the results were.
+  This will help me figure out what the issue might be quicker, as I will probably ask for this
+  anyways.
 
 ## Usage
 
