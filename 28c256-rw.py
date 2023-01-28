@@ -1,17 +1,39 @@
-import logging
 from typing import List, Union
-logger = logging.getLogger(__name__)
-
-def config_logging(level: Union[int, str], force=False):
-    logging.basicConfig(format='%(levelname)-8s | %(name)s: %(message)s',
-                        level=level, force=force)
-
-# logging configuration
-config_logging(logging.ERROR)
 import argparse
+import logging
 import camino
 import time
 import math
+import _io
+import sys
+
+logger = logging.getLogger(__name__)
+log_traceback = False
+
+def config_logging(verbosity: int, force=False, msg_format='%(levelname)-8s | %(name)s: %(message)s'):
+    global log_traceback
+    level = "ERROR"
+    log_traceback = False
+    if verbosity >= 3:
+        verbosity = 3
+        level = "DEBUG"
+        log_traceback = True
+    elif verbosity >= 2:
+        level = "INFO"
+        log_traceback = True
+        logging.getLogger("camino").setLevel("WARNING")
+    elif verbosity >= 1:
+        log_traceback = True
+        level = "WARNING"
+
+
+    logging.basicConfig(format=msg_format, level=level, force=force)
+    logger.debug(f'Verbosity set to {verbosity} ({level})')
+    return verbosity
+
+# logging configuration
+config_logging(0)
+
 # Little endian (least significant byte is stored at lowest address)
 
 
@@ -187,8 +209,8 @@ class EEPROM_Programmer():
 
     ### METHODS ###
 
-    def hexdump(self, start: int=0, stop: int=10):
-        """Dumps EEPROM contents from start (rounded down to nearest multiple of 16) to stop (rounded up to the nearest multiple of 16).
+    def hexdump(self, start: int=0x0000, stop: int=EEPROM_SIZE, allow_repetition=False):
+        """Dumps EEPROM contents from start (inclusive) to stop (exclusive).
 
         Args:
             start (int, optional): Starts hexdump before or at this address. Defaults to 0.
@@ -196,26 +218,87 @@ class EEPROM_Programmer():
         """
 
         if stop <= start: raise ValueError("Start must be less than stop.")
+        if stop > self.EEPROM_SIZE: raise ValueError("Stop must be less than EEPROM_SIZE (0x{:04x})".format(self.EEPROM_SIZE))
+        if start < 0: raise ValueError("Start must not be less than zero.")
 
-        # Perform the rounding of inputs
-        start = (math.trunc(start/0x10))*0x10
-        stop = (math.ceil(stop/0x10))*0x10
+        # Record each line
+        first_line = (math.trunc(start/0x10))*0x10
+        final_line = (math.ceil(stop/0x10))*0x10
 
         # Read pages (64 bytes) to be more efficient
-        first_page_number = (math.trunc(start/0x40))*0x40
-        final_page_number = (math.ceil(stop/0x40))*0x40
+        first_page = (math.trunc(first_line/0x40))*0x40
+        final_page = (math.ceil(final_line/0x40))*0x40
 
-        break_all = False
-        for i in range(first_page_number, final_page_number, 0x40):
-            if break_all: break
-            data = self._read_page(i)
-            for j in range(0, 0x40, 0x10):
-                a = i+j
-                if a < start: continue
-                if a >= stop: break_all = True; break
-                d = data[j:j+0x10]
-                dump = f"{a:04x}:  {d[0]:02x} {d[1]:02x} {d[2]:02x} {d[3]:02x} {d[4]:02x} {d[5]:02x} {d[6]:02x} {d[7]:02x}  {d[8]:02x} {d[9]:02x} {d[10]:02x} {d[11]:02x} {d[12]:02x} {d[13]:02x} {d[14]:02x} {d[15]:02x}  |{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in d[0x00:0x10]])}|"
-                print(dump)
+        # Is set to trigger an exit of the method
+        done = False
+        # Records the previously printed line's data
+        prev_line_data = bytes()
+        # Records if the previously printed line was only partially displayed
+        prev_line_partial = False
+        # Records if we are currently in a "*". a "*" happens when the same data is repeated on multiple lines in a row.
+        within_star = False
+
+        # Loop over each page
+        for page_addr in range(first_page, final_page, 0x40):
+            if done: break
+
+            # Read one page at a time
+            data = self._read_page(page_addr)
+
+            # Go over each line within the page.
+            for line in range(0, 0x40, 0x10):
+                line_addr = page_addr+line
+
+                if line_addr < first_line: continue
+                if line_addr >= final_line: done = True; break
+
+                # Get the data for this line
+                line_data = data[line:line+0x10]
+
+                # If we are within a "*" and the data matches, and this isnt the end of the dump: skip
+                if within_star and line_data == prev_line_data and not stop-0x10 < line_addr:
+                    continue
+
+                # No longer within a "*"
+                within_star = False
+
+                # Format each byte in the line
+                hd = [f'{byte:02x}' for byte in line_data]
+                # Visualize the data for the line as ascii
+                visualized = f"|{''.join([chr(c) if c >= 32 and c < 127 else '.' for c in line_data])}|"
+                # Records the address to print on the line
+                shown_addr = line_addr
+                # Records if the current line is partially printed
+                line_partial = False
+
+                if start > line_addr:
+                    # Blank out the data before the start
+                    line_partial = True
+                    shown_addr = line_addr+start%0x10
+                    visualized = (" "*(start%0x10)) + "|" +str(visualized[start%0x10+1:])
+                    for k in range(start%0x10):
+                        hd[k] = "  "
+                if stop-0x10 < line_addr:
+                    # Blank out the data after the end
+                    line_partial = True
+                    visualized = str(visualized[:-(0x10 - (stop%0x10-1))]) + "|"
+                    for k in range(0xf, stop%0x10-1, -1):
+                        hd[k] = "  "
+
+                if prev_line_data == line_data and not prev_line_partial and not line_partial and not allow_repetition:
+                    # Begin a new "*"
+                    print('*')
+                    within_star = True
+                else:
+                    # Print as usual
+                    print(f"{shown_addr:04x}  {hd[0]} {hd[1]} {hd[2]} {hd[3]} {hd[4]} {hd[5]} {hd[6]} {hd[7]}  {hd[8]} {hd[9]} {hd[10]} {hd[11]} {hd[12]} {hd[13]} {hd[14]} {hd[15]}  {visualized}")
+
+                # Current data has become the previous data.
+                prev_line_data = line_data
+                prev_line_partial = line_partial
+
+        # Print the final address, the byte at this address will not have been printed.
+        print(f"{stop:04x}")
 
 
     def write_test(self, trial_count: int=8):
@@ -257,12 +340,6 @@ class EEPROM_Programmer():
         logger.info(f"Done! {percent}% ({count}/{total}) errors avg over {trial_count} trials.")
 
 
-def create_file(filename):
-    buf = bytes([ord('Q')] * EEPROM_Programmer.EEPROM_SIZE)
-    with open(filename, 'wb') as f:
-        f.write(buf)
-
-
 def get_eeprom(port='COM3', baud=115200) -> EEPROM_Programmer:
     logger.info('Connecting to arduino...')
     logger.debug(f'  {port = }')
@@ -273,36 +350,58 @@ def get_eeprom(port='COM3', baud=115200) -> EEPROM_Programmer:
     return eeprom
 
 
-def main():
+def upload_file(file, eeprom: EEPROM_Programmer):
     FILE_LEN = EEPROM_Programmer.EEPROM_SIZE
 
-    eeprom = get_eeprom()
-    filename = "./dank_file.o"
-    create_file(filename)
+    raw_data = file.read()
+    file.close()
 
-    with open(filename, "rb") as f:
-        buf = bytes(f.read())
+    if type(raw_data) == bytes:
+        buf = raw_data
+    elif type(raw_data) == str:
+        buf = bytes(raw_data, "ascii")
+    else:
+        buf = bytes(raw_data)
 
     if len(buf) != FILE_LEN:
-        logger.fatal(f"FATAL: File length must be exactly {FILE_LEN} (0x{FILE_LEN:x}. Got {len(buf)} (0x{len(buf):x})")
+        logger.fatal(f"FATAL: File length must be exactly {FILE_LEN} (0x{FILE_LEN:x}); Got {len(buf)} (0x{len(buf):x})")
         exit(1)
 
     # Write file contents to EEPROM
     for addr in range(0, FILE_LEN, 64):
         eeprom._write_page(addr, buf[addr:addr+64])
-        logging.info(f"Writing... [0x{addr:04x}] {100*((addr+64)/FILE_LEN):.2f}%", end='\r')
-    print()
+        print(f"Writing... [0x{addr:04x}] {100*((addr+64)/FILE_LEN):.2f}%", end='\r', file=sys.stderr)
+    print(file=sys.stderr)
 
     # Read EEPROM and verify contents
     for addr in range(0, FILE_LEN, 64):
         new_data = eeprom._read_page(addr)
         should_data = buf[addr:addr+64]
-        print(f"Verifying... [0x{addr:04x}] {100*((addr+64)/FILE_LEN):.2f}%", end='\r')
+        print(f"Verifying... [0x{addr:04x}] {100*((addr+64)/FILE_LEN):.2f}%", end='\r', file=sys.stderr)
         if new_data != should_data:
-            print(f"\nVerification failed! address 0x{addr:04x}, got {new_data!r}, instead of {should_data!r}")
+            print(f"\nVerification failed! address 0x{addr:04x}, got {new_data!r}, instead of {should_data!r}", file=sys.stderr)
             exit(1)
-    print()
-    # eeprom.hexdump()
+    print(file=sys.stderr)
+
+
+def download_file(file, eeprom: EEPROM_Programmer):
+    FILE_LEN = EEPROM_Programmer.EEPROM_SIZE
+    # Hex buffer
+    buf = ""
+
+    # Read EEPROM
+    for addr in range(0, FILE_LEN, 64):
+        data = eeprom._read_page(addr)
+        buf += data.hex()
+        print(f"Reading... [0x{addr:04x}] {100*((addr+64)/FILE_LEN):.2f}%", end='\r', file=sys.stderr)
+    print(file=sys.stderr)
+    if type(file) == _io.TextIOWrapper:
+        file.write(str(bytes.fromhex(buf), encoding="ascii"))
+    else:
+        file.write(bytes.fromhex(buf))
+    file.close()
+
+
 
 
 def get_cli_args():
@@ -312,7 +411,7 @@ def get_cli_args():
         description="Read/Write model 28c265 EEPROMs.",
     )
     p.add_argument("-v", "--verbose", help="Show more output. -v for WARNING, -vv for INFO, -vvv for DEBUG. Default is ERROR", action="count", default=False)
-    mode = p.add_argument_group("required arguments")
+    mode = p.add_argument_group("Mode determining arguments", "These arguments set the mode to DOWNLOAD, UPLOAD and HEXDUMP respectively.")
     mode_required = mode.add_mutually_exclusive_group(required=True)
     mode_required.add_argument("-D", "--download",
                    metavar="OUTFILE",
@@ -330,37 +429,47 @@ def get_cli_args():
                    nargs='?',
                    const='0x8000',
                    type=str,
-                   # TODO: Make this description true
-                   # TODO: Evaluate feature creep!
-                   help="Hexdump the EEPROM contents from addresses START to STOP. Addresses are rounded to multiples of 16. START is rounded down, STOP is rounded up. Defaults to dump the entire EEPROM."
+                   help="Hexdump the EEPROM contents from addresses START to STOP. Defaults to dump the entire EEPROM."
                    )
+
+    hexdump = p.add_argument_group("Hexdump mode options", "These options only apply when in HEXDUMP mode (-H/--hexdump)")
+    hexdump.add_argument("-r", "--allow-repetition",
+                         help="Allow repeated lines in hexdump output.",
+                         action="store_true",
+                         dest="allow_repetition"
+                         )
+
     args = p.parse_args()
     return args
 
 
+def parse_address_range(specifier: str):
+    start, stop = 0, EEPROM_Programmer.EEPROM_SIZE
+    if specifier.count(":") == 0:
+        stop = int(specifier, base=0)
+    elif specifier.count(":") == 1:
+        start, stop = [int(n, base=0) for n in specifier.split(":")]
+    else:
+        raise ValueError("address range invalid syntax: must match [START:]STOP")
+
+    return start, stop
+
+
 def main_cli():
-    args = get_cli_args()
+    try:
+        args = get_cli_args()
+        args.verbose = config_logging(args.verbose, force=True)
+    except Exception:
+        # This exception must be logged
+        logging.exception("Parsing arguments or logging configuration failed. Cannot continue.")
+        exit(1)
 
-    # TODO: Abstract all of this logging level logic to config_logging(args.verbose) (including the "verbosity is.." message)
-    logging_level = "ERROR"
-    if args.verbose >= 3:
-        args.verbose = 3
-        logging_level = "DEBUG"
-        config_logging(logging_level, force=True)
-    elif args.verbose >= 2:
-        logging_level = "INFO"
-        config_logging(logging_level, force=True)
-        logging.getLogger("camino").setLevel("WARNING")
-    elif args.verbose >= 1:
-        logging_level = "WARNING"
-        config_logging(logging_level, force=True)
-
-    logger.debug(f'Verbosity set to {args.verbose} ({logging_level})')
     logger.debug(f"Input interpretation: {args!r}")
     logger.debug(f'  {args.verbose = }')
     logger.debug(f'  {args.upload = }')
     logger.debug(f'  {args.download = }')
     logger.debug(f'  {args.hexdump = }')
+    logger.debug(f'    {args.allow_repetition = }')
 
     if args.upload != None:
         mode = "upload"
@@ -378,8 +487,20 @@ def main_cli():
     eeprom = get_eeprom()
 
     if mode == "hexdump":
-        eeprom.hexdump()
+        start, stop = parse_address_range(args.hexdump)
+        eeprom.hexdump(start=start, stop=stop, allow_repetition=args.allow_repetition)
+    elif mode == "upload":
+        upload_file(args.upload, eeprom)
+    elif mode == "download":
+        download_file(args.download, eeprom)
 
 
 if __name__ == "__main__":
-    main_cli()
+    try:
+        main_cli()
+    except Exception as e:
+        msg = f"{e.__class__.__name__}: {e!s}"
+        if log_traceback:
+            logger.exception(msg)
+        else:
+            logger.error("(use -v for traceback) " + msg)

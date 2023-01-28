@@ -6,8 +6,8 @@ TODO
 [x] Reliable PC-arduino connection.
   [x] Data transfer 100% reliable from PC.
   [x] E2E test of writing/reading to EEPROM 100% reliable.
-[ ] Writing from PC of full files to EEPROM.
-[ ] CLI utility to write files to EEPROM.
+[x] Writing from PC of full files to EEPROM.
+[x] CLI utility to write files to EEPROM.
 
 Next
 ===============
