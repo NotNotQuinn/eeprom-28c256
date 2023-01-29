@@ -14,20 +14,27 @@ log_traceback = False
 def config_logging(verbosity: int, force=False, msg_format='%(levelname)-8s | %(name)s: %(message)s'):
     global log_traceback
     level = "ERROR"
+    camino_level = "ERROR"
     log_traceback = False
-    if verbosity >= 3:
-        verbosity = 3
+    if verbosity >= 4:
+        log_traceback = True
+        camino_level = "DEBUG"
         level = "DEBUG"
+    elif verbosity >= 3:
         log_traceback = True
+        camino_level = "INFO"
+        level = "DEBUG"
     elif verbosity >= 2:
-        level = "INFO"
         log_traceback = True
-        logging.getLogger("camino").setLevel("WARNING")
+        camino_level = "WARNING"
+        level = "INFO"
     elif verbosity >= 1:
         log_traceback = True
+        camino_level = "ERROR"
         level = "WARNING"
 
 
+    logging.getLogger("camino").setLevel(camino_level)
     logging.basicConfig(format=msg_format, level=level, force=force)
     logger.debug(f'Verbosity set to {verbosity} ({level})')
     return verbosity
@@ -210,7 +217,7 @@ class EEPROM_Programmer():
 
     ### METHODS ###
 
-    def hexdump(self, start: int=0x0000, stop: int=EEPROM_SIZE, allow_repetition=False):
+    def hexdump(self, start: int=0x0000, stop: int=EEPROM_SIZE, hexdump_all=False, _read_fn=_read_page):
         """Dumps EEPROM contents from start (inclusive) to stop (exclusive).
 
         Args:
@@ -244,7 +251,7 @@ class EEPROM_Programmer():
             if done: break
 
             # Read one page at a time
-            data = self._read_page(page_addr)
+            data = _read_fn(self, page_addr)
 
             # Go over each line within the page.
             for line in range(0, 0x40, 0x10):
@@ -286,7 +293,7 @@ class EEPROM_Programmer():
                     for k in range(0xf, stop%0x10-1, -1):
                         hd[k] = "  "
 
-                if prev_line_data == line_data and not prev_line_partial and not line_partial and not allow_repetition:
+                if prev_line_data == line_data and not prev_line_partial and not line_partial and not hexdump_all:
                     # Begin a new "*"
                     print('*')
                     within_star = True
@@ -302,34 +309,74 @@ class EEPROM_Programmer():
         print(f"{stop:04x}")
 
 
-    def write_test(self, trial_count: int=8):
+    def write_test(self, trial_count: int=8, hexdump_tests=True, hexdump_all=False, double_read=False, read_wait_time=1):
         """Runs a series of read/write trials on the first 4 EEPROM pages to verify everything is working correctly.
         Reports any errors as they occur, and the % of errors after all the trails are finished.
 
         Args:
             trial_count (int, optional): The number of times to write/read the first 4 EEPROM pages. Defaults to 8.
         """
+
+        time_guess = trial_count*read_wait_time + trial_count*0.2
+        time_guess_mins = time_guess//60
+        time_guess_secs = time_guess%60
+
+        print("Running write tests: Use -vv for more verbose output.")
+        print(f"This should take ~{time_guess_mins:.0f} mins {time_guess_secs:.0f} seconds (+ IO overhead)")
+        logger.info(f"Running write tests:")
+        logger.info(f"  {trial_count = }")
+        logger.info(f"  {hexdump_tests = }")
+        logger.info(f"  {hexdump_all = }")
+        logger.info(f"  {double_read = }")
+        logger.info(f"  {read_wait_time = }")
+
         # // Cycles through one message per trial
         count = 0
         for i in range(trial_count):
+            if time_guess_mins > 2:
+                logger.info(f"Trial {i+1:{len(str(trial_count))}}/{trial_count:} ({(i+1)*100/trial_count:.2f}%)")
             data = [0]*64
             for j in range(64):
-                data[j] = WRITE_TEST_PATTERNS[i % len(msg)][j % 4]
+                data[j] = self.WRITE_TEST_PATTERNS[i % len(self.WRITE_TEST_PATTERNS)][j % 4]
 
             self._write_page(0x00, data)
             self._write_page(0x40, data)
             self._write_page(0x80, data)
             self._write_page(0xc0, data)
-            self.hexdump(0x100)
+
+            time.sleep(read_wait_time)
+
+            if double_read:
+                # Read the data twice
+                self._read_page(0x00)
+                self._read_page(0x40)
+                self._read_page(0x80)
+                self._read_page(0xc0)
+
+            new_data = bytearray()
+
+            # for a in range(0x100):
+            #     new_data.append(self._read(a))
+            new_data.extend(self._read_page(0x00))
+            new_data.extend(self._read_page(0x40))
+            new_data.extend(self._read_page(0x80))
+            new_data.extend(self._read_page(0xc0))
+
+            if hexdump_tests:
+                def read_cached(self, address):
+                    return new_data[address:address+0x40]
+                self.hexdump(0, 0x100, hexdump_all=hexdump_all, _read_fn=read_cached)
+                print(f"=------------------------------------------------------------------------=")
+
             for a in range(0x100):
-                got = self._read(a)
-                expected = WRITE_TEST_PATTERNS[i % len(WRITE_TEST_PATTERNS)][a % 4]
+                got = new_data[a]
+                expected = self.WRITE_TEST_PATTERNS[i % len(self.WRITE_TEST_PATTERNS)][a % 4]
 
                 if got != expected:
                     count += 1
                     flipped = got ^ expected
                     msg = ""
-                    msg += f"{a:04x}: Expected {expected:02x}, got {got:02x}.   ("
+                    msg += f"[pattern: {' '.join([f'{b:02x}' for b in self.WRITE_TEST_PATTERNS[i % len(self.WRITE_TEST_PATTERNS)]])}] {a:04x}: Expected {expected:02x}, got {got:02x}.   ("
                     for _ in range(8):
                         msg += '1' if flipped & 0x80 else '0'
                         flipped <<= 1
@@ -338,7 +385,7 @@ class EEPROM_Programmer():
 
         total = trial_count * 256
         percent = (count / total) * 100
-        logger.info(f"Done! {percent}% ({count}/{total}) errors avg over {trial_count} trials.")
+        print(f"Done! {percent:.2f}% ({count}/{total}) errors avg over {trial_count} trials.")
 
 
 def get_eeprom(port='COM3', baud=115200) -> EEPROM_Programmer:
@@ -409,10 +456,13 @@ def get_cli_args():
     p = argparse.ArgumentParser(
         add_help=True,
         prog="28c256-rw.py",
-        description="Read/Write model 28c265 EEPROMs.",
+        description="""
+        Read out and write to model AT28C256 EEPROMs.
+        Uploaded files must be exactly 0x8000 bytes in length.
+        """,
     )
     p.add_argument("-v", "--verbose", help="Show more output. -v for WARNING, -vv for INFO, -vvv for DEBUG. Default is ERROR", action="count", default=False)
-    mode = p.add_argument_group("Mode determining arguments", "These arguments set the mode to DOWNLOAD, UPLOAD and HEXDUMP respectively.")
+    mode = p.add_argument_group("Mode determining arguments", "These arguments set the mode to DOWNLOAD, UPLOAD, HEXDUMP and WRITE-TESTING respectively.")
     mode_required = mode.add_mutually_exclusive_group(required=True)
     mode_required.add_argument("-D", "--download",
                    metavar="OUTFILE",
@@ -430,14 +480,40 @@ def get_cli_args():
                    nargs='?',
                    const='0x8000',
                    type=str,
-                   help="Hexdump the EEPROM contents from addresses START to STOP. Defaults to dump the entire EEPROM."
+                   help="Hexdump the EEPROM contents from addresses START (inclusive) to STOP (exclusive). Defaults to dump the entire EEPROM."
+                   )
+    mode_required.add_argument("-T", "--run-write-tests",
+                   action='store',
+                   metavar='N',
+                   type=int,
+                   dest="write_test_trails",
+                   help="WARNING: DATA LOSS POSSIBLE. Runs write tests for the EEPROM. Each of N times the first 256 bytes of the EEPROM are written and then read back. The total error percentage is reported."
                    )
 
-    hexdump = p.add_argument_group("Hexdump mode options", "These options only apply when in HEXDUMP mode (-H/--hexdump)")
-    hexdump.add_argument("-r", "--allow-repetition",
-                         help="Allow repeated lines in hexdump output.",
+    hexdump = p.add_argument_group("Hexdump options", "These options modify the behaviour of HEXDUMP mode, and WRITE-TESTING mode when using --hexdump-tests.")
+    hexdump.add_argument("-a", "--hexdump-all",
+                         help="Allow repeated lines in hexdump output. By default when a line is repeated more than once, an asterisk is shown. This option disables that behaviour.",
                          action="store_true",
-                         dest="allow_repetition"
+                         dest="hexdump_all"
+                         )
+    write_test = p.add_argument_group("Write-testing options", "These modify the behaviour of WRITE-TESTING mode.")
+    write_test.add_argument("-s", "--hexdump-tests",
+                         help="Dumps the bytes that are modified each trial using HEXDUMP.",
+                         action="store_true",
+                         dest="hexdump_tests"
+                         )
+    write_test.add_argument("-w", "--read-wait-time",
+                         help="Specifies the amount of time in seconds to wait after writing and before reading the test data. Floating point values are accepted. Default is 1.",
+                         action="store",
+                         metavar="S",
+                         default=1,
+                         dest="read_wait_time",
+                         type=float
+                         )
+    write_test.add_argument("-d", "--double-read",
+                         help="Reads the test data back twice, using the second data only. Somehow this improves error rates to near zero in some cases.",
+                         action="store_true",
+                         dest="double_read",
                          )
 
     args = p.parse_args()
@@ -462,7 +538,7 @@ def main_cli():
         args.verbose = config_logging(args.verbose, force=True)
     except Exception:
         # This exception must be logged
-        logging.exception("Parsing arguments or logging configuration failed. Cannot continue.")
+        logger.exception("Parsing arguments or logging configuration failed. Cannot continue.")
         exit(1)
 
     logger.debug(f"Input interpretation: {args!r}")
@@ -470,14 +546,21 @@ def main_cli():
     logger.debug(f'  {args.upload = }')
     logger.debug(f'  {args.download = }')
     logger.debug(f'  {args.hexdump = }')
-    logger.debug(f'    {args.allow_repetition = }')
+    logger.debug(f'    {args.hexdump_all = }')
+    logger.debug(f'  {args.write_test_trails = }')
+    logger.debug(f'    {args.hexdump_tests = }')
+    logger.debug(f'    {args.read_wait_time = }')
+    logger.debug(f'    {args.double_read = }')
 
+    mode = ""
     if args.upload != None:
         mode = "upload"
     elif args.download != None:
         mode = "download"
     elif args.hexdump != None:
         mode = "hexdump"
+    elif args.write_test_trails != None:
+        mode = "write-testing"
     else:
         logger.fatal("Input interpretation is ambiguous: no valid mode")
         exit(1)
@@ -489,12 +572,22 @@ def main_cli():
 
     if mode == "hexdump":
         start, stop = parse_address_range(args.hexdump)
-        eeprom.hexdump(start=start, stop=stop, allow_repetition=args.allow_repetition)
+        eeprom.hexdump(start=start, stop=stop, hexdump_all=args.hexdump_all)
     elif mode == "upload":
         upload_file(args.upload, eeprom)
     elif mode == "download":
         download_file(args.download, eeprom)
-
+    elif mode == "write-testing":
+        eeprom.write_test(
+            trial_count=args.write_test_trails,
+            hexdump_tests=args.hexdump_tests,
+            hexdump_all=args.hexdump_all,
+            read_wait_time=args.read_wait_time,
+            double_read=args.double_read
+        )
+    else:
+        logger.fatal("Unable to execute: mode is invalid")
+        exit(1)
 
 if __name__ == "__main__":
     try:
