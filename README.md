@@ -123,66 +123,89 @@ To setup the software:
 
 ### Troubleshooting
 
-If you encounter issues setting up the EEPROM, there are a few things that might help you resolve your issues:
+If you encounter issues setting up the EEPROM and verifying that it works, there are some
+things that might help you resolve your issues:
+
+<!-- Editors node: I spent way too long rewording these paragraphs to match the same line -->
+
+* Ensure that each wire connecting the EEPROM to the arduino make proper contact. Does it
+  seem obvious? Yes, but its really not. (especially when working in the "software" realm
+  for a few hours)
 
 * Double check that the arduino pins used to plug in the EEPROM are correctly recorded in
   `28c256.ino`. If any of these are swapped it might not be obvious, but the data written
   will be wrong when read by some other hardware. However: It will seem correct ONLY from
   the arduino's perspective. Only if pins 14, 20, 22, 27 or 28 are swapped the chip won't
-  work, otherwise it will seem to work, but not actually. View the
+  work. If something else is swapped: it may seem to be working, but it wont be. View the
   [datasheet](https://eater.net/datasheets/28c256.pdf) to see what pin has which function.
-  
-* Try running the read/write tests. To access them, you have to remove the `#define USE_CAMINO`
-  line near the beginning of `28c256.ino`. After uploading the file it will run a test to see
-  if all the bytes written are read back properly by the arduino. This also works even if the
-  connection using camino isn't working for some reason. There is a second copy of the same
-  tests in `28c256-rw.py` that uses the camino connection. Try running both and compare.
-  
-* If the above tests are giving different data every time you run them, then you might have
-  a problem with interference between the wires. To solve this issue I had to make sure none
-  of the IO pin's wires were directly parallel to any address pin's wires. This is especially
-  important for the lower order address bits. Try moving the wires while the arduino-based
-  tests are running to get a sense of what positioning of wires can cause issues.
-  
-* If you are still having issues, try putting a 10 μF (microfarad) capacitor across each power
-  pin of the EEPROM (GND & VCC). This will store a tiny amount of power closer to the chip.
-  This solved some of my issues, but doesn't seem to be necessary as after removing them the
-  issues haven't come back. Only try this if you already have the capacitors.
-  
-* If you're still having issues and believe its a problem of this library/script feel free to 
-  open an issue, and I'll try to resolve the issue as best I can when I have time. In your
-  issue please be descriptive of what you have and have not tried, and what the results were.
-  This will help me figure out what the issue might be quicker, as I will probably ask for this
-  anyways.
+
+* Try running the read/write tests. To run them, see the help output for the CLI tool. If
+  for some reason you can't get the CLI tool to work there are tests you can run from the
+  arduino itself. To run the test from the arduino without the CLI, recompile `28c256.ino`
+  with the line that says `#define USE_CAMINO` commented out. This will automatically run
+  a basic test to help you get more intuition about the problem. However, the recommended
+  way to test is through the CLI, if possible.
+
+* If the above test is giving different data every time, (i.e., `Expected ff, got XX.` ->
+  and `XX` is different each time) then there might be interference between the wires. To
+  solve this issue make sure that none of the wires connected to IO are directly parallel
+  to any wire connected to address pins. This is especially important for the lower order
+  address bits. Try moving or pushing the wires while the arduino-based tests are running
+  to get a sense of what positioning of wires can cause issues.
+
+* If you are still having issues and have a few capacitors laying around try putting a 10
+  μF (microfarad) capacitor across each power pin (pins 14 & 28) of the EEPROM. This will
+  store a tiny amount of power closer to the EEPROM. This solved some issues, but doesn't
+  seem to be necessary as after removing them the issues haven't come back. Only try this
+  if you already have the capacitors.
+
+* If you're still having issues getting the CLI working and you believe its an issue with
+  this library feel free to open an issue and I'll try to resolve the issue as best I can,
+  if I can, and when I have time. In your issue, please be very descriptive of things you
+  tried and didn't try, and why those things didn't work. I will probably ask about these
+  things anyway, so this will only serve to help me figure out the problem faster.
 
 ## Usage
 
 CLI usage text:
 
 ```txt
-usage: 28c256-rw.py [-h] [-v] (-D OUTFILE | -U INFILE | -H [[START:]STOP]) [-r]
+usage: 28c256-rw.py [-h] [-v] (-D OUTFILE | -U INFILE | -H [[START:]STOP] | -T N) [-a] [-s] [-w S] [-d]
 
-Read/Write model 28c265 EEPROMs.
+Read out and write to model AT28C256 EEPROMs. Uploaded files must be exactly 0x8000 bytes in length.
 
 optional arguments:
   -h, --help            show this help message and exit
-  -v, --verbose         Show more output. -v for WARNING, -vv for INFO, -vvv for
-                        DEBUG. Default is ERROR
+  -v, --verbose         Show more output. -v for WARNING, -vv for INFO, -vvv for DEBUG. Default is ERROR
 
 Mode determining arguments:
-  These arguments set the mode to DOWNLOAD, UPLOAD and HEXDUMP respectively.
+  These arguments set the mode to DOWNLOAD, UPLOAD, HEXDUMP and WRITE-TESTING respectively.
 
   -D OUTFILE, --download OUTFILE
                         Download the EEPROM and store in OUTFILE
   -U INFILE, --upload INFILE
                         Upload INFILE to the EEPROM
   -H [[START:]STOP], --hexdump [[START:]STOP]
-                        Hexdump the EEPROM contents from addresses START to STOP.
+                        Hexdump the EEPROM contents from addresses START (inclusive) to STOP (exclusive).
                         Defaults to dump the entire EEPROM.
+  -T N, --run-write-tests N
+                        WARNING: DATA LOSS POSSIBLE. Runs write tests for the EEPROM. Each of N times the
+                        first 256 bytes of the EEPROM are written and then read back. The total error
+                        percentage is reported.
 
-Hexdump mode options:
-  These options only apply when in HEXDUMP mode (-H/--hexdump)
+Hexdump options:
+  These options modify the behaviour of HEXDUMP mode, and WRITE-TESTING mode when using --hexdump-tests.
 
-  -r, --allow-repetition
-                        Allow repeated lines in hexdump output.
+  -a, --hexdump-all     Allow repeated lines in hexdump output. By default when a line is repeated more
+                        than once, an asterisk is shown. This option disables that behaviour.
+
+Write-testing options:
+  These modify the behaviour of WRITE-TESTING mode.
+
+  -s, --hexdump-tests   Dumps the bytes that are modified each trial using HEXDUMP.
+  -w S, --read-wait-time S
+                        Specifies the amount of time in seconds to wait after writing and before reading
+                        the test data. Floating point values are accepted. Default is 1.
+  -d, --double-read     Reads the test data back twice, using the second data only. Somehow this improves
+                        error rates to near zero in some cases.
 ```
