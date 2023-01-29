@@ -128,7 +128,7 @@ things that might help you resolve your issues:
 
 <!-- Editors node: I spent way too long rewording these paragraphs to match the same line -->
 
-* Ensure that each wire connecting the EEPROM to the arduino make proper contact. Does it
+* Ensure that the wires connecting the EEPROM to the arduino make proper contact. Does it
   seem obvious? Yes, but its really not. (especially when working in the "software" realm
   for a few hours)
 
@@ -170,42 +170,53 @@ things that might help you resolve your issues:
 CLI usage text:
 
 ```txt
-usage: 28c256-rw.py [-h] [-v] (-D OUTFILE | -U INFILE | -H [[START:]STOP] | -T N) [-a] [-s] [-w S] [-d]
+usage: 28c256-rw.py [-h] [-v] (-D OUTFILE | -U INFILE | -H [[START:]STOP] | -T N)
+                    [-a] [-s] [-w S] [-d]
 
-Read out and write to model AT28C256 EEPROMs. Uploaded files must be exactly 0x8000 bytes in length.
+Read out and write to model AT28C256 EEPROMs. Uploaded files must be exactly
+0x8000 bytes in length.
 
 optional arguments:
   -h, --help            show this help message and exit
-  -v, --verbose         Show more output. -v for WARNING, -vv for INFO, -vvv for DEBUG. Default is ERROR
+  -v, --verbose         Show more output. -v for WARNING, -vv for INFO, -vvv for
+                        DEBUG. Default is ERROR
 
 Mode determining arguments:
-  These arguments set the mode to DOWNLOAD, UPLOAD, HEXDUMP and WRITE-TESTING respectively.
+  These arguments set the mode to DOWNLOAD, UPLOAD, HEXDUMP and WRITE-TESTING
+  respectively.
 
   -D OUTFILE, --download OUTFILE
                         Download the EEPROM and store in OUTFILE
   -U INFILE, --upload INFILE
                         Upload INFILE to the EEPROM
   -H [[START:]STOP], --hexdump [[START:]STOP]
-                        Hexdump the EEPROM contents from addresses START (inclusive) to STOP (exclusive).
-                        Defaults to dump the entire EEPROM.
+                        Hexdump the EEPROM contents from addresses START
+                        (inclusive) to STOP (exclusive). Defaults to dump the
+                        entire EEPROM.
   -T N, --run-write-tests N
-                        WARNING: DATA LOSS POSSIBLE. Runs write tests for the EEPROM. Each of N times the
-                        first 256 bytes of the EEPROM are written and then read back. The total error
+                        WARNING: DATA LOSS POSSIBLE. Runs write tests for the
+                        EEPROM. Each of N times the first 256 bytes of the EEPROM
+                        are written and then read back. The total error
                         percentage is reported.
 
 Hexdump options:
-  These options modify the behaviour of HEXDUMP mode, and WRITE-TESTING mode when using --hexdump-tests.
+  These options modify the behaviour of HEXDUMP mode, and WRITE-TESTING mode
+  when using --hexdump-tests.
 
-  -a, --hexdump-all     Allow repeated lines in hexdump output. By default when a line is repeated more
-                        than once, an asterisk is shown. This option disables that behaviour.
+  -a, --hexdump-all     Allow repeated lines in hexdump output. By default when a
+                        line is repeated more than once, an asterisk is shown.
+                        This option disables that behaviour.
 
 Write-testing options:
   These modify the behaviour of WRITE-TESTING mode.
 
-  -s, --hexdump-tests   Dumps the bytes that are modified each trial using HEXDUMP.
+  -s, --hexdump-tests   Dumps the bytes that are modified each trial using
+                        HEXDUMP.
   -w S, --read-wait-time S
-                        Specifies the amount of time in seconds to wait after writing and before reading
-                        the test data. Floating point values are accepted. Default is 1.
-  -d, --double-read     Reads the test data back twice, using the second data only. Somehow this improves
-                        error rates to near zero in some cases.
+                        Specifies the amount of time in seconds to wait after
+                        writing and before reading the test data. Floating point
+                        values are accepted. Default is 1.
+  -d, --double-read     Reads the test data back twice, using the second data
+                        only. Somehow this improves error rates to near zero in
+                        some cases.
 ```
